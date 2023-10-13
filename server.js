@@ -17,8 +17,8 @@ io.on('connection', (socket) => {
   socket.on('createRoom', (roomName, playerName) => {
     console.log("roomCreated", roomName, playerName);
     if (!rooms[roomName]) {
-      rooms[roomName] = { players: [], readyCount: 0 };
-      rooms[roomName].players.push({ id: socket.id, name: playerName });
+      rooms[roomName] = { players: {}, readyCount: 0 };
+      rooms[roomName].players[playerName] = { id: socket.id, name: playerName, count: 0 };
       socket.join(roomName);
       socket.emit('roomCreated', roomName, rooms[roomName].players);
     }
@@ -28,8 +28,12 @@ io.on('connection', (socket) => {
       console.log("updatePlayers", roomName, playerName);
     if (rooms[roomName]) {
       socket.join(roomName);
-      rooms[roomName].players.push({ id: socket.id, name: playerName });
+      rooms[roomName].players[playerName] = { id: socket.id, name: playerName, count: 0 };
       io.to(roomName).emit('updatePlayers', rooms[roomName].players);
+      if(Object.keys(rooms[roomName].players).length === 2) {
+        console.log("In game!", roomName);
+        io.to(roomName).emit('inGame', roomName);
+      }
     }
   });
 
@@ -37,19 +41,37 @@ io.on('connection', (socket) => {
     if (rooms[roomName]) {
       rooms[roomName].readyCount++;
       if (rooms[roomName].readyCount === 2) {
-        startGame(roomName);
+        console.log("Start game! ", roomName);
+        io.to(roomName).emit('gameStart', roomName);
+        startTimer(roomName);
       }
     }
   });
+
+  socket.on('addResult', (roomName, name, count) => {
+    rooms[roomName].players[name].count = count;
+    io.to(roomName).emit('result', rooms[roomName].players);
+  })
 
   socket.on('disconnect', () => {
     console.log(`Disconnected. Socket ID: ${socket.id}`);
   });
 });
 
-function startGame(roomName) {
-  console.log("Start game! ", roomName);
-}
+const startTimer = (roomName) => {
+  let time = 0;
+
+  const timerInterval = setInterval(() => {
+    time++;
+    console.log(time);
+    io.to(roomName).emit('timer', time);
+  }, 1000);
+
+  setTimeout(() => {
+    clearInterval(timerInterval);
+    io.to(roomName).emit('gameEnd');
+  }, 30000);
+};
 
 server.listen(8100, () => {
   console.log('WebSocket server running on 8100');
