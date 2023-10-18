@@ -22,6 +22,9 @@ io.on('connection', (socket) => {
       socket.join(roomName);
       socket.emit('roomCreated', roomName, rooms[roomName].players);
     }
+    else {
+      socket.emit('errorHandling', "같은 이름의 방이 존재합니다.");
+    }
   });
 
   socket.on('joinRoom', (roomName, playerName) => {
@@ -30,21 +33,21 @@ io.on('connection', (socket) => {
       socket.join(roomName);
       rooms[roomName].players[playerName] = { id: socket.id, name: playerName, count: 0 };
       io.to(roomName).emit('updatePlayers', rooms[roomName].players);
-      if(Object.keys(rooms[roomName].players).length === 2) {
-        console.log("In game!", roomName);
-        io.to(roomName).emit('inGame', roomName);
-      }
+    }
+    else {
+      socket.emit('errorHandling', "해당 이름의 방이 없습니다.");
     }
   });
 
-  socket.on('ready', (roomName) => {
-    if (rooms[roomName]) {
-      rooms[roomName].readyCount++;
-      if (rooms[roomName].readyCount === 2) {
-        console.log("Start game! ", roomName);
-        io.to(roomName).emit('gameStart', roomName);
-        startTimer(roomName);
-      }
+  socket.on('readyOnWait', (roomName) => {
+    io.to(roomName).emit('inGame');
+  });
+
+  socket.on('readyOnGame', (roomName) => {
+    rooms[roomName].readyCount++;
+    if(rooms[roomName].readyCount == Object.keys(rooms[roomName].players).length) {
+      io.to(roomName).emit('gameStart');
+      startTimer(roomName);
     }
   });
 
