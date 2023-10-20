@@ -4,7 +4,7 @@ const socketIo = require('socket.io');
 const server = http.createServer();
 const io = socketIo(server, {
     cors: {
-        origin: "http://localhost:3000", 
+        origin: "https://gstone.ds.aolda.net", 
         methods: ["GET", "POST"], 
       },
 });
