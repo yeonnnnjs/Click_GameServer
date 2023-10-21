@@ -3,10 +3,10 @@ const socketIo = require('socket.io');
 
 const server = http.createServer();
 const io = socketIo(server, {
-    cors: {
-        origin: "https://gstone.ds.aolda.net", 
-        methods: ["GET", "POST"], 
-      },
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"],
+  },
 });
 
 const rooms = {};
@@ -16,9 +16,10 @@ io.on('connection', (socket) => {
 
   socket.on('createRoom', (roomName, playerName) => {
     console.log("roomCreated", roomName, playerName);
+
     if (!rooms[roomName]) {
-      rooms[roomName] = { players: {}, readyCount: 0 };
-      rooms[roomName].players[playerName] = { id: socket.id, name: playerName, count: 0 };
+      rooms[roomName] = { players: {}, readyCount: 0, maker: playerName, roomName: roomName };
+      rooms[roomName].players[playerName] = { id: socket.id, name: playerName, count: 0, isMaker: true };
       socket.join(roomName);
       socket.emit('roomCreated', roomName, rooms[roomName].players);
     }
@@ -28,24 +29,47 @@ io.on('connection', (socket) => {
   });
 
   socket.on('joinRoom', (roomName, playerName) => {
-      console.log("updatePlayers", roomName, playerName);
+    console.log("updatePlayers", roomName, playerName);
     if (rooms[roomName]) {
-      socket.join(roomName);
-      rooms[roomName].players[playerName] = { id: socket.id, name: playerName, count: 0 };
+      rooms[roomName].players[playerName] = { id: socket.id, name: playerName, count: 0, isMaker: false };
       io.to(roomName).emit('updatePlayers', rooms[roomName].players);
+      socket.join(roomName);
+      socket.emit('joinRoom', rooms[roomName]);
     }
     else {
       socket.emit('errorHandling', "해당 이름의 방이 없습니다.");
     }
   });
 
+  socket.on('getRoomList', () => {
+    socket.emit('roomList', rooms);
+  });
+
   socket.on('readyOnWait', (roomName) => {
     io.to(roomName).emit('inGame');
   });
 
+  socket.on('leaveRoom', (roomName, playerName) => {
+    console.log("leavePlayers", roomName, playerName);
+    if (rooms[roomName]) {
+      if (rooms[roomName].maker == playerName) {
+        delete rooms[roomName];
+        io.to(roomName).emit('outGame');
+        io.to(roomName).emit('errorHandling', "방이 있었는데요 없었습니다");
+      }
+      else {
+        delete rooms[roomName].players[playerName];
+        socket.emit('outGame');
+      }
+    }
+    else {
+      socket.emit('errorHandling', "나가기 오류, 새로고침하세요:)");
+    }
+  });
+
   socket.on('readyOnGame', (roomName) => {
     rooms[roomName].readyCount++;
-    if(rooms[roomName].readyCount == Object.keys(rooms[roomName].players).length) {
+    if (rooms[roomName].readyCount == Object.keys(rooms[roomName].players).length) {
       io.to(roomName).emit('gameStart');
       startTimer(roomName);
     }
@@ -57,6 +81,18 @@ io.on('connection', (socket) => {
   })
 
   socket.on('disconnect', () => {
+    const roomName = findRoomByPlayerId(socket.id);
+    if (roomName) {
+      const player = findPlayerBySockerId(socket.id);
+      if (rooms[roomName].maker == player) {
+        delete rooms[roomName];
+        io.to(roomName).emit('outGame');
+        io.to(roomName).emit('errorHandling', "방이 있었는데요 없었습니다");
+      }
+      else {
+        delete rooms[roomName].players[playerName];
+      }
+    }
     console.log(`Disconnected. Socket ID: ${socket.id}`);
   });
 });
@@ -75,6 +111,24 @@ const startTimer = (roomName) => {
     io.to(roomName).emit('gameEnd');
   }, 30000);
 };
+
+const findRoomByPlayerId = (id) => {
+  for (const roomName in rooms) {
+    if (rooms[roomName].players.id == id) {
+      return roomName;
+    }
+  }
+  return null;
+}
+
+const findPlayerBySockerId = (id, roomName) => {
+  for (const player in rooms[roomName].players) {
+    if (player.id  == id) {
+      return player;
+    }
+  }
+  return null;
+}
 
 server.listen(8100, () => {
   console.log('WebSocket server running on 8100');
